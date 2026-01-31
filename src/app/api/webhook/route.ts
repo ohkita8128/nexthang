@@ -91,10 +91,20 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
   const groupId = source.groupId;
 
   try {
+    // グループ名を取得
+    let groupName = null;
+    try {
+      const groupSummary = await lineClient.getGroupSummary(groupId!);
+      groupName = groupSummary.groupName;
+    } catch (e) {
+      console.log('Could not get group name:', e);
+    }
+
     const { error } = await supabase
       .from('groups')
       .upsert({
         line_group_id: groupId,
+        name: groupName,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'line_group_id',
@@ -103,7 +113,7 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
     if (error) {
       console.error('Error saving group:', error);
     } else {
-      console.log('Group saved:', groupId);
+      console.log('Group saved:', groupName || groupId);
     }
 
     await lineClient.replyMessage({
@@ -267,12 +277,37 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
         .select()
         .single();
 
-      // グループ情報を取得
-      const { data: groupData } = await supabase
+      // グループ情報を取得（なければ作成、名前がなければ更新）
+      let { data: groupData } = await supabase
         .from('groups')
-        .select('id')
+        .select('id, name')
         .eq('line_group_id', groupId)
         .single();
+
+      // グループがない、または名前がない場合は取得して更新
+      if (!groupData || !groupData.name) {
+        let groupName = null;
+        try {
+          const groupSummary = await lineClient.getGroupSummary(groupId!);
+          groupName = groupSummary.groupName;
+        } catch (e) {
+          console.log('Could not get group name:', e);
+        }
+
+        const { data: upsertedGroup } = await supabase
+          .from('groups')
+          .upsert({
+            line_group_id: groupId,
+            name: groupName,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'line_group_id',
+          })
+          .select()
+          .single();
+        
+        groupData = upsertedGroup;
+      }
 
       // group_members に登録
       if (userData && groupData) {
