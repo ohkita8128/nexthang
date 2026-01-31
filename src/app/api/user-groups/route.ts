@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   // 所属グループ取得
   const { data, error } = await supabase
     .from('group_members')
-    .select('group_id, user_id, groups(id, name, line_group_id)')
+    .select('group_id, user_id, groups(id, name, line_group_id, last_activity_at)')
     .eq('user_id', userData.id);
 
   if (error) {

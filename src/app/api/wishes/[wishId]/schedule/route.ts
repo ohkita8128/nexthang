@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
+import { notifyScheduleStart } from '@/lib/line/notification';
 
 // 候補日一覧取得
 export async function GET(
@@ -57,6 +58,13 @@ export async function POST(
       return NextResponse.json({ error: 'dates required' }, { status: 400 });
     }
 
+    // wish情報を取得
+    const { data: wish } = await supabase
+      .from('wishes')
+      .select('title, group_id')
+      .eq('id', wishId)
+      .single();
+
     // 既存の候補日を削除
     await supabase
       .from('schedule_candidates')
@@ -87,6 +95,12 @@ export async function POST(
         vote_deadline: voteDeadline || null
       })
       .eq('id', wishId);
+
+    // 通知を送信
+    if (wish?.group_id && wish?.title) {
+      const liffUrl = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}/wishes/${wishId}/schedule/vote?groupId=${wish.group_id}`;
+      notifyScheduleStart(wish.group_id, wishId, wish.title, liffUrl).catch(console.error);
+    }
 
     return NextResponse.json(data, { status: 201 });
   } catch (error) {

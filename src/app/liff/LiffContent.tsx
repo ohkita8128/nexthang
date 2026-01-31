@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useLiff } from '@/hooks/use-liff';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -24,6 +24,11 @@ type Wish = {
   wish_responses: WishResponse[];
 };
 
+type Group = {
+  group_id: string;
+  groups: { id: string; name: string; last_activity_at: string };
+};
+
 export default function LiffContent() {
   const { profile, context, isReady, error } = useLiff();
   const router = useRouter();
@@ -31,32 +36,84 @@ export default function LiffContent() {
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [groupName, setGroupName] = useState<string | null>(null);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [loadingState, setLoadingState] = useState<string>('初期化中...');
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [showGroupSheet, setShowGroupSheet] = useState(false);
+
+  const fetchGroups = useCallback(async () => {
+    if (!profile?.userId) return [];
+    try {
+      const res = await fetch(`/api/user-groups?lineUserId=${profile.userId}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        // last_activity_at順にソート
+        const sorted = data.sort((a: Group, b: Group) => {
+          const aTime = a.groups?.last_activity_at || '1970-01-01';
+          const bTime = b.groups?.last_activity_at || '1970-01-01';
+          return bTime.localeCompare(aTime);
+        });
+        setAllGroups(sorted);
+        return sorted;
+      }
+      return [];
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  }, [profile?.userId]);
 
   useEffect(() => {
-    const fetchGroupId = async () => {
+    const init = async () => {
       try {
         const paramGroupId = searchParams.get('groupId');
-        if (paramGroupId) { setGroupId(paramGroupId); setLoadingState(''); return; }
+        if (paramGroupId) {
+          setGroupId(paramGroupId);
+          const groups = await fetchGroups();
+          const found = groups.find((g: Group) => g.group_id === paramGroupId);
+          if (found?.groups?.name) setGroupName(found.groups.name);
+          setLoadingState('');
+          return;
+        }
+        
         const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
         if (isValidLineGroupId) {
           setLoadingState('グループ情報を取得中...');
           const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
           const data = await res.json();
-          if (res.ok && data?.id) { setGroupId(data.id); setLoadingState(''); return; }
+          if (res.ok && data?.id) {
+            setGroupId(data.id);
+            setGroupName(data.name);
+            await fetchGroups();
+            setLoadingState('');
+            return;
+          }
         }
+        
         setLoadingState('所属グループを確認中...');
-        const res = await fetch(`/api/user-groups?lineUserId=${profile?.userId}`);
-        const data = await res.json();
-        if (!res.ok) { setFetchError('エラーが発生しました'); setLoadingState(''); return; }
-        if (!data || data.length === 0) { setFetchError('所属グループがありません。\n\nBotをグループに招待して、\nグループで何かメッセージを送ってください。'); setLoadingState(''); return; }
-        if (data.length === 1) { setGroupId(data[0].group_id); if (data[0].groups?.name) setGroupName(data[0].groups.name); setLoadingState(''); return; }
-        router.push('/liff/groups');
-      } catch (err) { setFetchError('通信エラー'); setLoadingState(''); }
+        const groups = await fetchGroups();
+        if (groups.length === 0) {
+          setFetchError('所属グループがありません。\n\nBotをグループに招待して、\nグループで何かメッセージを送ってください。');
+          setLoadingState('');
+          return;
+        }
+        if (groups.length === 1) {
+          setGroupId(groups[0].group_id);
+          setGroupName(groups[0].groups?.name || null);
+          setLoadingState('');
+          return;
+        }
+        // 複数グループがある場合は最もアクティブなものを選択
+        setGroupId(groups[0].group_id);
+        setGroupName(groups[0].groups?.name || null);
+        setLoadingState('');
+      } catch (err) {
+        setFetchError('通信エラー');
+        setLoadingState('');
+      }
     };
-    if (isReady && profile) fetchGroupId();
-  }, [isReady, profile, context.groupId, searchParams, router]);
+    if (isReady && profile) init();
+  }, [isReady, profile, context.groupId, searchParams, fetchGroups]);
 
   useEffect(() => {
     const fetchWishes = async () => {
@@ -70,25 +127,29 @@ export default function LiffContent() {
     fetchWishes();
   }, [groupId]);
 
-  // 自分が未回答の投票（参加確認または日程調整）
+  const switchGroup = (newGroupId: string, newGroupName: string | null) => {
+    setGroupId(newGroupId);
+    setGroupName(newGroupName);
+    setShowGroupSheet(false);
+    router.push(`/liff?groupId=${newGroupId}`);
+  };
+
+  // 自分が未回答の投票
   const getUnansweredVotes = () => {
     return wishes.filter(w => {
       if (!w.voting_started && w.status !== 'voting') return false;
-      // 参加確認の場合
       if (w.start_date && w.voting_started) {
         const myRes = w.wish_responses?.find(r => r.users?.display_name === profile?.displayName);
         return !myRes;
       }
-      // 日程調整の場合（status === 'voting'で日付なし）
       if (!w.start_date && w.status === 'voting') {
-        // 日程調整の未回答チェックは複雑なのでここでは単純に表示
         return true;
       }
       return false;
     });
   };
 
-  // 直近の予定（日時あり＆投票開始済みのもの）
+  // 直近の予定（投票開始済みのみ）
   const getUpcomingEvents = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -103,7 +164,7 @@ export default function LiffContent() {
       .slice(0, 5);
   };
 
-  // 人気な行きたいリスト（興味が多い順）
+  // 人気の行きたいリスト
   const getPopularWishes = () => {
     return [...wishes]
       .filter(w => !w.start_date && w.status === 'open')
@@ -151,15 +212,59 @@ export default function LiffContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
+      {/* ヘッダー */}
       <header className="bg-white border-b border-slate-200 px-4 py-4">
         <div className="flex items-center justify-between">
-          <div><h1 className="text-lg font-semibold text-slate-900">あそボット</h1>{groupName && <p className="text-xs text-slate-500">{groupName}</p>}</div>
-          <div className="flex items-center gap-2">
-            <Link href="/liff/groups" className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center"><svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" /></svg></Link>
-            {profile?.pictureUrl && <img src={profile.pictureUrl} alt="" className="w-8 h-8 rounded-full" />}
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">🎯 あそボット</h1>
+            <button
+              onClick={() => setShowGroupSheet(true)}
+              className="flex items-center gap-1 text-sm text-slate-500 mt-0.5"
+            >
+              {groupName || 'グループ'}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
+          {profile?.pictureUrl && <img src={profile.pictureUrl} alt="" className="w-8 h-8 rounded-full" />}
         </div>
       </header>
+
+      {/* ボトムシート */}
+      {showGroupSheet && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowGroupSheet(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[60vh] overflow-hidden animate-slide-up">
+            <div className="p-4 border-b border-slate-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">グループを選択</h2>
+                <button onClick={() => setShowGroupSheet(false)} className="p-2 text-slate-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(60vh-80px)]">
+              {allGroups.map((g) => (
+                <button
+                  key={g.group_id}
+                  onClick={() => switchGroup(g.group_id, g.groups?.name || null)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-100"
+                >
+                  <span className="text-sm text-slate-700">{g.groups?.name || '名前なし'}</span>
+                  {g.group_id === groupId && (
+                    <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="p-4 space-y-4">
         {/* 未回答の投票 */}
@@ -202,7 +307,7 @@ export default function LiffContent() {
               {upcoming.map((wish) => {
                 const counts = getResponseCounts(wish);
                 return (
-                  <Link key={wish.id} href={`/liff/wishes?groupId=${groupId}`} className="flex items-center justify-between px-4 py-3">
+                  <Link key={wish.id} href={`/liff/wishes/${wish.id}/confirm?groupId=${groupId}`} className="flex items-center justify-between px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate">{wish.title}</p>
                       <p className="text-xs text-emerald-600">{formatDateTime(wish)}</p>
