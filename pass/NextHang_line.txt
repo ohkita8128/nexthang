@@ -1,0 +1,11 @@
+
+アカウント名
+NextHang
+業種
+個人・個人（学生）
+ベーシックID
+@165fldpw
+チャネルアクセストークン
+6YGQRPVh5V/U8VuGKS0xdSTIEWRuO42Cls3Lg2QxV+BW5W05V1x3hTVuk63eGYrGunpWoSYhCts5/POFpisECovVOeYjVoEcKtuEEPO8kn1PnWhibmCoC9fV25KOSu5nQajXRzQMks4ilbjDoYQ2zAdB04t89/1O/w1cDnyilFU=
+チャネルシークレット
+f5d01be6f0a7ed22d6afb4810bb2ab65
