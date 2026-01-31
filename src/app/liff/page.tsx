@@ -14,36 +14,114 @@ export default function LiffPage() {
   const { profile, context, isReady, error } = useLiff();
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [loadingState, setLoadingState] = useState<string>('初期化中...');
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // デバッグモード（URLに?debug=1を付けると表示）
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDebugMode(window.location.search.includes('debug=1'));
+    }
+  }, []);
+
+  const addDebug = (msg: string) => {
+    console.log('[DEBUG]', msg);
+    setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`]);
+  };
 
   useEffect(() => {
     const fetchGroupId = async () => {
-      if (!context.groupId) {
+      try {
+        addDebug(`context.type: ${context.type}`);
+        addDebug(`context.groupId: ${context.groupId || 'null'}`);
+
+        // グループトークから開いた場合
+        if (context.groupId) {
+          setLoadingState('グループ情報を取得中...');
+          addDebug(`Fetching /api/groups/by-line-id?lineGroupId=${context.groupId}`);
+          
+          const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
+          const data = await res.json();
+          
+          addDebug(`Response status: ${res.status}`);
+          addDebug(`Response data: ${JSON.stringify(data)}`);
+
+          if (!res.ok) {
+            if (res.status === 404) {
+              setFetchError('このグループはまだ登録されていません。\n\nBotを一度グループから削除して、再度招待してください。');
+            } else {
+              setFetchError(`エラーが発生しました (${res.status}): ${data.error || 'Unknown error'}`);
+            }
+            setLoadingState('');
+            return;
+          }
+
+          if (data?.id) {
+            addDebug(`Group found: ${data.id}`);
+            setGroupId(data.id);
+            setLoadingState('');
+          }
+          return;
+        }
+
+        // 1:1トークまたは外部ブラウザから開いた場合
+        setLoadingState('所属グループを検索中...');
+        addDebug(`Fetching /api/user-groups?lineUserId=${profile?.userId}`);
+        
         const res = await fetch(`/api/user-groups?lineUserId=${profile?.userId}`);
         const data = await res.json();
-        if (data && data.length > 0) {
-          setGroupId(data[0].group_id);
-        }
-        return;
-      }
 
-      const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
-      const data = await res.json();
-      if (data?.id) {
-        setGroupId(data.id);
+        addDebug(`Response status: ${res.status}`);
+        addDebug(`Response data: ${JSON.stringify(data)}`);
+
+        if (!res.ok) {
+          if (res.status === 404) {
+            setFetchError('ユーザー情報が見つかりません。\n\nBotを友だち追加してください。');
+          } else {
+            setFetchError(`エラーが発生しました (${res.status}): ${data.error || 'Unknown error'}`);
+          }
+          setLoadingState('');
+          return;
+        }
+
+        if (data && data.length > 0) {
+          addDebug(`User groups found: ${data.length}`);
+          setGroupId(data[0].group_id);
+        } else {
+          setFetchError('所属グループがありません。\n\nBotをグループに招待してください。');
+        }
+        setLoadingState('');
+      } catch (err) {
+        console.error('fetchGroupId error:', err);
+        addDebug(`Error: ${err}`);
+        setFetchError(`通信エラーが発生しました。\n\n${err}`);
+        setLoadingState('');
       }
     };
 
     if (isReady && profile) {
+      addDebug(`LIFF ready. Profile: ${profile.displayName}`);
       fetchGroupId();
     }
-  }, [isReady, profile, context.groupId]);
+  }, [isReady, profile, context.groupId, context.type]);
 
   useEffect(() => {
     const fetchWishes = async () => {
       if (!groupId) return;
-      const res = await fetch(`/api/groups/${groupId}/wishes`);
-      const data = await res.json();
-      setWishes(data.slice(0, 3));
+      try {
+        addDebug(`Fetching wishes for group: ${groupId}`);
+        const res = await fetch(`/api/groups/${groupId}/wishes`);
+        const data = await res.json();
+        addDebug(`Wishes count: ${Array.isArray(data) ? data.length : 'error'}`);
+        if (Array.isArray(data)) {
+          setWishes(data.slice(0, 3));
+        }
+      } catch (err) {
+        addDebug(`Wishes fetch error: ${err}`);
+      }
     };
     fetchWishes();
   }, [groupId]);
@@ -51,15 +129,65 @@ export default function LiffPage() {
   if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-slate-500 mt-3">LIFF 初期化中...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-red-500">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="bg-white rounded-xl border border-red-200 p-6 max-w-sm w-full text-center">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">エラー</h2>
+          <p className="text-sm text-red-500 whitespace-pre-line">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ローディング中またはエラー
+  if (loadingState || fetchError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-sm w-full text-center">
+          {loadingState && (
+            <>
+              <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto" />
+              <p className="text-sm text-slate-500 mt-3">{loadingState}</p>
+            </>
+          )}
+          {fetchError && (
+            <>
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-slate-900 mb-2">グループが見つかりません</h2>
+              <p className="text-sm text-slate-500 whitespace-pre-line">{fetchError}</p>
+            </>
+          )}
+          
+          {/* デバッグ情報 */}
+          {debugMode && debugInfo.length > 0 && (
+            <div className="mt-4 p-3 bg-slate-100 rounded-lg text-left">
+              <p className="text-xs font-semibold text-slate-600 mb-2">Debug Info:</p>
+              <div className="text-xs text-slate-500 space-y-1 max-h-40 overflow-y-auto">
+                {debugInfo.map((info, i) => (
+                  <p key={i} className="font-mono break-all">{info}</p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -81,6 +209,17 @@ export default function LiffPage() {
       </header>
 
       <main className="px-4 py-6 space-y-6">
+        {/* デバッグ情報（メイン画面） */}
+        {debugMode && (
+          <div className="bg-slate-800 rounded-xl p-4 text-xs text-slate-300">
+            <p className="font-semibold text-white mb-2">Debug Mode</p>
+            <p>context.type: {context.type || 'null'}</p>
+            <p>context.groupId: {context.groupId || 'null'}</p>
+            <p>DB groupId: {groupId || 'null'}</p>
+            <p>profile.userId: {profile?.userId?.slice(0, 10)}...</p>
+          </div>
+        )}
+
         {/* 予定セクション */}
         <section>
           <div className="flex items-center justify-between mb-3">
