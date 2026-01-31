@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useLiff } from '@/hooks/use-liff';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function NewWishPage() {
   const { profile, context, isReady, error } = useLiff();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -18,6 +19,13 @@ export default function NewWishPage() {
   useEffect(() => {
     const fetchGroupId = async () => {
       try {
+        // URLパラメータから groupId を取得
+        const paramGroupId = searchParams.get('groupId');
+        if (paramGroupId) {
+          setGroupId(paramGroupId);
+          return;
+        }
+
         // LINE の正しい groupId は C で始まる
         const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
         
@@ -63,7 +71,7 @@ export default function NewWishPage() {
     if (isReady && profile) {
       fetchGroupId();
     }
-  }, [isReady, profile, context.groupId]);
+  }, [isReady, profile, context.groupId, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +92,7 @@ export default function NewWishPage() {
       });
 
       if (res.ok) {
-        router.push('/liff/wishes');
+        router.push(`/liff/wishes?groupId=${groupId}`);
       } else {
         alert('追加に失敗しました');
       }
@@ -131,7 +139,7 @@ export default function NewWishPage() {
       {/* ヘッダー */}
       <header className="bg-white border-b border-slate-200 px-4 py-4">
         <div className="flex items-center gap-4">
-          <Link href="/liff/wishes" className="text-slate-400 hover:text-slate-600">
+          <Link href={`/liff/wishes?groupId=${groupId}`} className="text-slate-400 hover:text-slate-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
