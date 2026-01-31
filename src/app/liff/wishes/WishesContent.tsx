@@ -199,6 +199,7 @@ export default function WishesContent() {
   };
 
   const canDelete = (wish: Wish) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
+  const canEdit = (wish: Wish) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
 
   useEffect(() => {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); processPendingActions(); };
@@ -228,21 +229,33 @@ export default function WishesContent() {
             const myVote = localVotes[wish.id] || '';
             const counts = getResponseCounts(wish);
             const isVoting = wish.voting_started || wish.status === 'voting';
+            const isConfirmed = wish.status === 'confirmed';
             const interestCount = wish.interests.length + (hasInterest && !wish.interests.some(i => i.users?.display_name === profile?.displayName) ? 1 : 0) - (!hasInterest && wish.interests.some(i => i.users?.display_name === profile?.displayName) ? 1 : 0);
             
             return (
-              <div key={wish.id} className="px-4 py-4">
+              <div key={wish.id} className={`px-4 py-4 ${isConfirmed ? 'bg-blue-50' : ''}`}>
                 {/* 1行目: タイトル + 人数 */}
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold text-base text-slate-900">{wish.title}</h3>
-                    <span className="text-sm text-slate-400">{interestCount}人が興味あり</span>
+                    {isConfirmed ? (
+                      <span className="text-sm text-blue-500 font-medium">✓確定</span>
+                    ) : (
+                      <span className="text-sm text-slate-400">{interestCount}人が興味あり</span>
+                    )}
                   </div>
-                  {canDelete(wish) && (
-                    <button onClick={() => deleteWish(wish.id)} className="text-slate-300 hover:text-red-500 p-1 ml-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {canEdit(wish) && (
+                      <Link href={`/liff/wishes/${wish.id}/edit?groupId=${groupId}`} className="text-slate-300 hover:text-slate-500 p-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </Link>
+                    )}
+                    {canDelete(wish) && (
+                      <button onClick={() => deleteWish(wish.id)} className="text-slate-300 hover:text-red-500 p-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* 2行目: 日時 */}
@@ -262,7 +275,18 @@ export default function WishesContent() {
 
                 {/* 4行目: ボタン */}
                 <div className="mt-3">
-                  {isVoting && hasDateTime ? (
+                  {isConfirmed ? (
+                    <div className="flex items-center gap-2">
+                      <Link href={`/liff/wishes/${wish.id}/confirm?groupId=${groupId}`} className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 text-white">
+                        参加確認を見る
+                      </Link>
+                      <span className="text-sm text-slate-400">
+                        <span className="text-emerald-500">◯{counts.ok}</span>
+                        <span className="text-amber-500 ml-1">△{counts.maybe}</span>
+                        <span className="text-red-500 ml-1">✕{counts.ng}</span>
+                      </span>
+                    </div>
+                  ) : isVoting && hasDateTime ? (
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => toggleInterest(wish.id)} 

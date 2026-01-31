@@ -306,6 +306,7 @@ export default function LiffContent() {
             <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
               {upcoming.map((wish) => {
                 const counts = getResponseCounts(wish);
+                const isConfirmed = wish.status === 'confirmed';
                 return (
                   <Link key={wish.id} href={`/liff/wishes/${wish.id}/confirm?groupId=${groupId}`} className="flex items-center justify-between px-4 py-3">
                     <div className="min-w-0">
@@ -313,7 +314,7 @@ export default function LiffContent() {
                       <p className="text-xs text-emerald-600">{formatDateTime(wish)}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {wish.voting_started ? (
+                      {(wish.voting_started || isConfirmed) ? (
                         <span className="text-xs text-slate-400">
                           <span className="text-emerald-500">◯{counts.ok}</span>
                           <span className="text-amber-500 ml-1">△{counts.maybe}</span>
@@ -321,7 +322,11 @@ export default function LiffContent() {
                       ) : (
                         <span className="text-xs text-slate-400">{wish.interests.length}人</span>
                       )}
-                      {wish.voting_started && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-600 rounded">投票中</span>}
+                      {isConfirmed ? (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded">確定</span>
+                      ) : wish.voting_started && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-600 rounded">投票中</span>
+                      )}
                     </div>
                   </Link>
                 );

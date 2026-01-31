@@ -17,7 +17,9 @@ type Wish = {
   start_date: string | null;
   start_time: string | null;
   is_all_day: boolean;
+  status: 'open' | 'voting' | 'confirmed';
   voting_started: boolean;
+  confirmed_date: string | null;
   interests: { id: string; users: { display_name: string } }[];
   wish_responses: WishResponse[];
 };
@@ -142,7 +144,20 @@ export default function CalendarContent() {
             return (
               <div key={formatDateKey(date)} className={`aspect-square rounded text-xs flex flex-col items-center justify-start pt-0.5 ${isToday ? 'bg-slate-100' : ''}`}>
                 <span className={`text-[11px] ${dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-slate-700'}`}>{date.getDate()}</span>
-                {dayWishes.length > 0 && <div className="flex gap-0.5 mt-0.5">{dayWishes.slice(0, 3).map((_, i) => <div key={i} className="w-1 h-1 bg-emerald-500 rounded-full" />)}</div>}
+                {dayWishes.length > 0 && (
+                  <div className="flex gap-0.5 mt-0.5">
+                    {dayWishes.slice(0, 3).map((w, i) => (
+                      <div 
+                        key={i} 
+                        className={`w-1 h-1 rounded-full ${
+                          w.status === 'confirmed' ? 'bg-blue-500' 
+                          : w.voting_started ? 'bg-emerald-500' 
+                          : 'bg-slate-300'
+                        }`} 
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -163,10 +178,16 @@ export default function CalendarContent() {
               const counts = getResponseCounts(wish);
               return (
                 <Link key={wish.id} href={`/liff/wishes?groupId=${groupId}`} className="flex items-center px-3 py-2 gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${wish.voting_started ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    wish.status === 'confirmed' ? 'bg-blue-500' 
+                    : wish.voting_started ? 'bg-emerald-500' 
+                    : 'bg-slate-300'
+                  }`} />
                   <span className={`text-xs w-14 shrink-0 ${isSun ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-500'}`}>{text}</span>
                   <span className="text-sm text-slate-900 flex-1 truncate">{wish.title}</span>
-                  {wish.voting_started ? (
+                  {wish.status === 'confirmed' ? (
+                    <span className="text-[10px] text-blue-500 shrink-0">✓確定</span>
+                  ) : wish.voting_started ? (
                     <span className="text-[10px] text-slate-400 shrink-0">
                       <span className="text-emerald-500">◯{counts.ok}</span>
                       <span className="text-amber-500 ml-0.5">△{counts.maybe}</span>

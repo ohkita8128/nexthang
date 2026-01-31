@@ -10,7 +10,19 @@ export async function PATCH(
   try {
     const { wishId } = await params;
     const body = await request.json();
-    const { votingStarted, confirmedDate, voteDeadline } = body;
+    const { 
+      votingStarted, 
+      confirmedDate, 
+      voteDeadline,
+      // 編集用フィールド
+      title,
+      description,
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+      isAllDay
+    } = body;
 
     // 更新前のデータを取得
     const { data: beforeData } = await supabase
@@ -20,12 +32,23 @@ export async function PATCH(
       .single();
 
     const updateData: Record<string, unknown> = {};
+    
+    // 状態更新フィールド
     if (votingStarted !== undefined) updateData.voting_started = votingStarted;
     if (confirmedDate !== undefined) {
       updateData.confirmed_date = confirmedDate;
       updateData.status = 'confirmed';
     }
     if (voteDeadline !== undefined) updateData.vote_deadline = voteDeadline;
+    
+    // 編集フィールド
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (startDate !== undefined) updateData.start_date = startDate;
+    if (startTime !== undefined) updateData.start_time = startTime;
+    if (endDate !== undefined) updateData.end_date = endDate;
+    if (endTime !== undefined) updateData.end_time = endTime;
+    if (isAllDay !== undefined) updateData.is_all_day = isAllDay;
 
     const { data, error } = await supabase
       .from('wishes')
