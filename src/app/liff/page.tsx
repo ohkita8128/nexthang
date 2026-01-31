@@ -38,8 +38,12 @@ export default function LiffPage() {
         addDebug(`context.type: ${context.type}`);
         addDebug(`context.groupId: ${context.groupId || 'null'}`);
 
-        // グループトークから開いた場合
-        if (context.groupId) {
+        // LINE の正しい groupId は C で始まる
+        const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
+        addDebug(`isValidLineGroupId: ${isValidLineGroupId}`);
+
+        // グループトークから開いた場合（かつ正しい groupId の場合）
+        if (isValidLineGroupId) {
           setLoadingState('グループ情報を取得中...');
           addDebug(`Fetching /api/groups/by-line-id?lineGroupId=${context.groupId}`);
           

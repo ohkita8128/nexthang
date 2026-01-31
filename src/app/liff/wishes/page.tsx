@@ -34,7 +34,10 @@ export default function WishesPage() {
   useEffect(() => {
     const fetchGroupId = async () => {
       try {
-        if (context.groupId) {
+        // LINE の正しい groupId は C で始まる
+        const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
+        
+        if (isValidLineGroupId) {
           const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
           const data = await res.json();
           

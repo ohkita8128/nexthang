@@ -245,6 +245,52 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
   const text = event.message.text.toLowerCase();
   const liffUrl = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}`;
 
+  // グループからのメッセージの場合、ユーザーを group_members に自動登録
+  if (event.source.type === 'group' && event.source.userId) {
+    const groupId = event.source.groupId;
+    const userId = event.source.userId;
+
+    try {
+      // ユーザー情報を取得・登録
+      const profile = await lineClient.getGroupMemberProfile(groupId!, userId);
+      
+      const { data: userData } = await supabase
+        .from('users')
+        .upsert({
+          line_user_id: userId,
+          display_name: profile.displayName,
+          picture_url: profile.pictureUrl,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'line_user_id',
+        })
+        .select()
+        .single();
+
+      // グループ情報を取得
+      const { data: groupData } = await supabase
+        .from('groups')
+        .select('id')
+        .eq('line_group_id', groupId)
+        .single();
+
+      // group_members に登録
+      if (userData && groupData) {
+        await supabase
+          .from('group_members')
+          .upsert({
+            group_id: groupData.id,
+            user_id: userData.id,
+          }, {
+            onConflict: 'group_id,user_id',
+          });
+        console.log('Member registered via message:', profile.displayName);
+      }
+    } catch (err) {
+      console.error('Error registering member:', err);
+    }
+  }
+
   if (text === 'メニュー' || text === 'めにゅー' || text === 'menu') {
     await lineClient.replyMessage({
       replyToken: event.replyToken,
