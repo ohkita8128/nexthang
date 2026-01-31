@@ -13,22 +13,50 @@ export default function NewWishPage() {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchGroupId = async () => {
-      if (!context.groupId) {
+      try {
+        // LINE の正しい groupId は C で始まる
+        const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
+        
+        if (isValidLineGroupId) {
+          const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
+          const data = await res.json();
+          
+          if (!res.ok) {
+            if (res.status === 404) {
+              setFetchError('このグループはまだ登録されていません。');
+            } else {
+              setFetchError(`エラー (${res.status})`);
+            }
+            return;
+          }
+          
+          if (data?.id) {
+            setGroupId(data.id);
+          }
+          return;
+        }
+        
+        // フォールバック: user-groups から取得
         const res = await fetch(`/api/user-groups?lineUserId=${profile?.userId}`);
         const data = await res.json();
+        
+        if (!res.ok) {
+          setFetchError('グループ情報の取得に失敗しました。');
+          return;
+        }
+        
         if (data && data.length > 0) {
           setGroupId(data[0].group_id);
+        } else {
+          setFetchError('所属グループがありません。');
         }
-        return;
-      }
-      
-      const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
-      const data = await res.json();
-      if (data?.id) {
-        setGroupId(data.id);
+      } catch (err) {
+        console.error('fetchGroupId error:', err);
+        setFetchError('通信エラーが発生しました。');
       }
     };
 
@@ -76,10 +104,24 @@ export default function NewWishPage() {
     );
   }
 
-  if (error) {
+  if (error || fetchError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-red-500">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-sm w-full text-center">
+          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">エラー</h2>
+          <p className="text-sm text-slate-500">{error || fetchError}</p>
+          <Link
+            href="/liff"
+            className="inline-block mt-4 px-4 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg"
+          >
+            ホームに戻る
+          </Link>
+        </div>
       </div>
     );
   }
@@ -163,6 +205,11 @@ export default function NewWishPage() {
         >
           {isSubmitting ? '追加中...' : '追加する'}
         </button>
+        
+        {/* groupId がまだ取得できていない場合のメッセージ */}
+        {!groupId && !fetchError && (
+          <p className="text-center text-sm text-slate-400">グループ情報を読み込み中...</p>
+        )}
       </form>
     </div>
   );
