@@ -1,70 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 import Link from 'next/link';
-
-type WishResponse = {
-  id: string;
-  response: 'ok' | 'maybe' | 'ng';
-  users: { display_name: string };
-};
-
-type Wish = {
-  id: string;
-  title: string;
-  start_date: string | null;
-  start_time: string | null;
-  is_all_day: boolean;
-  status: 'open' | 'voting' | 'confirmed';
-  voting_started: boolean;
-  confirmed_date: string | null;
-  interests: { id: string; users: { display_name: string } }[];
-  wish_responses: WishResponse[];
-};
+import { useGroup } from '@/hooks/use-group';
+import { useWishes } from '@/hooks/use-wishes';
 
 export default function CalendarContent() {
-  const { profile, context, isReady } = useLiff();
-  const searchParams = useSearchParams();
-  const [wishes, setWishes] = useState<Wish[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [groupId, setGroupId] = useState<string | null>(null);
+  const { groupId, isLoading: isGroupLoading } = useGroup();
+  const { wishes, isLoading: isWishesLoading } = useWishes(groupId);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  useEffect(() => {
-    const fetchGroupId = async () => {
-      const paramGroupId = searchParams.get('groupId');
-      if (paramGroupId) { setGroupId(paramGroupId); return; }
-      const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
-      if (isValidLineGroupId) {
-        const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
-        const data = await res.json();
-        if (data?.id) { setGroupId(data.id); return; }
-      }
-      const res = await fetch(`/api/user-groups?lineUserId=${profile?.userId}`);
-      const data = await res.json();
-      if (data && data.length > 0) setGroupId(data[0].group_id);
-    };
-    if (isReady && profile) fetchGroupId();
-  }, [isReady, profile, context.groupId, searchParams]);
-
-  useEffect(() => {
-    const fetchWishes = async () => {
-      if (!groupId) return;
-      try {
-        const res = await fetch(`/api/groups/${groupId}/wishes`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const withDate = data.filter((w: Wish) => w.start_date);
-          withDate.sort((a: Wish, b: Wish) => (a.start_date || '').localeCompare(b.start_date || ''));
-          setWishes(withDate);
-        }
-      } catch (err) { console.error(err); }
-      finally { setIsLoading(false); }
-    };
-    fetchWishes();
-  }, [groupId]);
+  // 日付ありのみ
+  const wishesWithDate = wishes.filter(w => w.start_date).sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
 
   const formatDate = (dateStr: string) => {
     const [y, m, d] = dateStr.split('-').map(Number);
@@ -84,20 +31,20 @@ export default function CalendarContent() {
   };
 
   const formatDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  const getWishesForDate = (date: Date) => wishes.filter(w => w.start_date === formatDateKey(date));
+  const getWishesForDate = (date: Date) => wishesWithDate.filter(w => w.start_date === formatDateKey(date));
 
   // 表示月の予定をフィルタ
   const getMonthWishes = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    return wishes.filter(w => {
+    return wishesWithDate.filter(w => {
       if (!w.start_date) return false;
       const [y, m] = w.start_date.split('-').map(Number);
       return y === year && m === month + 1;
     });
   };
 
-  const getResponseCounts = (wish: Wish) => {
+  const getResponseCounts = (wish: typeof wishes[0]) => {
     if (!wish.wish_responses) return { ok: 0, maybe: 0, ng: 0 };
     return {
       ok: wish.wish_responses.filter(r => r.response === 'ok').length,
@@ -108,7 +55,7 @@ export default function CalendarContent() {
 
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  if (isGroupLoading || isWishesLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
 
   const days = getDaysInMonth(currentMonth);
   const monthWishes = getMonthWishes();

@@ -1,85 +1,37 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useSearchParams, useParams } from 'next/navigation';
+import { useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
-
-type WishResponse = {
-  id: string;
-  user_id: string;
-  response: 'ok' | 'maybe' | 'ng';
-  users: { display_name: string; picture_url: string | null };
-};
-
-type Wish = {
-  id: string;
-  title: string;
-  description: string | null;
-  start_date: string | null;
-  start_time: string | null;
-  end_date: string | null;
-  end_time: string | null;
-  is_all_day: boolean;
-  vote_deadline: string | null;
-  wish_responses: WishResponse[];
-};
-
-type GroupMember = {
-  user_id: string;
-  users: { display_name: string; picture_url: string | null };
-};
+import { useGroup } from '@/hooks/use-group';
+import { useWish } from '@/hooks/use-wishes';
+import { useMembers } from '@/hooks/use-members';
 
 export default function ConfirmContent() {
-  const { profile, isReady } = useLiff();
-  const searchParams = useSearchParams();
   const params = useParams();
   const wishId = params.wishId as string;
-  const groupId = searchParams.get('groupId');
   
-  const [wish, setWish] = useState<Wish | null>(null);
-  const [members, setMembers] = useState<GroupMember[]>([]);
+  const { groupId, profile, isLoading: isGroupLoading } = useGroup();
+  const { wish, isLoading: isWishLoading, refreshWishes } = useWish(groupId, wishId);
+  const { members, isLoading: isMembersLoading } = useMembers(groupId);
+  
   const [myVote, setMyVote] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    if (!groupId) return;
-    try {
-      // wish取得
-      const wishRes = await fetch(`/api/groups/${groupId}/wishes`);
-      const wishData = await wishRes.json();
-      if (Array.isArray(wishData)) {
-        const found = wishData.find((w: Wish) => w.id === wishId);
-        if (found) {
-          setWish(found);
-          const myRes = found.wish_responses?.find(
-            (r: WishResponse) => r.users?.display_name === profile?.displayName
-          );
-          setMyVote(myRes?.response || '');
-        }
-      }
-      
-      // メンバー取得
-      const memberRes = await fetch(`/api/groups/${groupId}/members`);
-      const memberData = await memberRes.json();
-      if (Array.isArray(memberData)) {
-        setMembers(memberData);
-      }
-    } catch (err) { console.error(err); }
-    finally { setIsLoading(false); }
-  }, [groupId, wishId, profile?.displayName]);
-
-  useEffect(() => {
-    if (isReady && profile) fetchData();
-  }, [isReady, profile, fetchData]);
+  // 初期値設定（wishが読み込まれた時）
+  if (wish && profile && !initialized) {
+    const myRes = wish.wish_responses?.find(r => r.users?.display_name === profile.displayName);
+    if (myRes) setMyVote(myRes.response);
+    setInitialized(true);
+  }
 
   const handleVote = (vote: string) => {
     setMyVote(prev => prev === vote ? '' : vote);
   };
 
-  const saveVote = async () => {
+  const saveVote = useCallback(async () => {
     if (!profile) return;
     setIsSaving(true);
     try {
@@ -90,14 +42,13 @@ export default function ConfirmContent() {
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      // リフレッシュ
-      await fetchData();
+      refreshWishes();
     } catch (err) { console.error(err); }
     finally { setIsSaving(false); }
-  };
+  }, [wishId, profile, myVote, refreshWishes]);
 
-  const formatDateTime = (wish: Wish) => {
-    if (!wish.start_date) return '';
+  const formatDateTime = () => {
+    if (!wish?.start_date) return '';
     const [y, m, d] = wish.start_date.split('-').map(Number);
     const date = new Date(y, m - 1, d);
     const wd = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
@@ -144,7 +95,8 @@ export default function ConfirmContent() {
     };
   };
 
-  if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  const isLoading = isGroupLoading || isWishLoading || isMembersLoading;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
   if (!wish) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><p className="text-slate-500">予定が見つかりません</p></div>;
 
   const groups = getResponseGroups();
@@ -167,7 +119,7 @@ export default function ConfirmContent() {
         {/* 予定情報 */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h2 className="font-semibold text-slate-900 mb-2">{wish.title}</h2>
-          <p className="text-emerald-600 text-sm">📅 {formatDateTime(wish)}</p>
+          <p className="text-emerald-600 text-sm">📅 {formatDateTime()}</p>
           {wish.description && <p className="text-sm text-slate-500 mt-2">{wish.description}</p>}
           {wish.vote_deadline && (
             <p className="text-xs text-orange-500 mt-2">⏰ 回答期限: {formatDeadline(wish.vote_deadline)}</p>

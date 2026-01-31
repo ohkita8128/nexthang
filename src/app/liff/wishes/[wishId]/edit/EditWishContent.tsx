@@ -1,33 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useRouter, useSearchParams, useParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-
-type Wish = {
-  id: string;
-  title: string;
-  description: string | null;
-  start_date: string | null;
-  start_time: string | null;
-  end_date: string | null;
-  end_time: string | null;
-  is_all_day: boolean;
-  status: string;
-  voting_started: boolean;
-  created_by: string;
-};
+import { useGroup } from '@/hooks/use-group';
+import { useWish } from '@/hooks/use-wishes';
 
 export default function EditWishContent() {
-  const { profile, isReady } = useLiff();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const params = useParams();
   const wishId = params.wishId as string;
-  const groupId = searchParams.get('groupId');
   
-  const [wish, setWish] = useState<Wish | null>(null);
+  const { groupId, profile, isLoading: isGroupLoading, myUserId } = useGroup();
+  const { wish, isLoading: isWishLoading, refreshWishes } = useWish(groupId, wishId);
+  
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [hasDateTime, setHasDateTime] = useState(false);
@@ -37,50 +23,24 @@ export default function EditWishContent() {
   const [endTime, setEndTime] = useState('21:00');
   const [isAllDay, setIsAllDay] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
-  // ユーザーID取得
+  // 初期値設定
   useEffect(() => {
-    const fetchUserId = async () => {
-      if (!profile?.userId) return;
-      try {
-        const res = await fetch(`/api/user-groups?lineUserId=${profile.userId}`);
-        const data = await res.json();
-        if (data?.[0]?.user_id) setMyUserId(data[0].user_id);
-      } catch (err) { console.error(err); }
-    };
-    fetchUserId();
-  }, [profile?.userId]);
-
-  // 既存データ取得
-  useEffect(() => {
-    const fetchWish = async () => {
-      if (!groupId) return;
-      try {
-        const res = await fetch(`/api/groups/${groupId}/wishes`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const found = data.find((w: Wish) => w.id === wishId);
-          if (found) {
-            setWish(found);
-            setTitle(found.title);
-            setDescription(found.description || '');
-            if (found.start_date) {
-              setHasDateTime(true);
-              setStartDate(found.start_date);
-              setStartTime(found.start_time?.slice(0, 5) || '18:00');
-              setEndDate(found.end_date || found.start_date);
-              setEndTime(found.end_time?.slice(0, 5) || '21:00');
-              setIsAllDay(found.is_all_day || false);
-            }
-          }
-        }
-      } catch (err) { console.error(err); }
-      finally { setIsLoading(false); }
-    };
-    if (isReady) fetchWish();
-  }, [isReady, groupId, wishId]);
+    if (wish && !initialized) {
+      setTitle(wish.title);
+      setDescription(wish.description || '');
+      if (wish.start_date) {
+        setHasDateTime(true);
+        setStartDate(wish.start_date);
+        setStartTime(wish.start_time?.slice(0, 5) || '18:00');
+        setEndDate(wish.end_date || wish.start_date);
+        setEndTime(wish.end_time?.slice(0, 5) || '21:00');
+        setIsAllDay(wish.is_all_day || false);
+      }
+      setInitialized(true);
+    }
+  }, [wish, initialized]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,13 +73,16 @@ export default function EditWishContent() {
         body: JSON.stringify(body),
       });
       
-      if (res.ok) router.push(`/liff/wishes?groupId=${groupId}`);
-      else alert('更新に失敗しました');
+      if (res.ok) {
+        refreshWishes();
+        router.push(`/liff/wishes?groupId=${groupId}`);
+      } else alert('更新に失敗しました');
     } catch (err) { alert('更新に失敗しました'); }
     finally { setIsSubmitting(false); }
   };
 
-  if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  const isLoading = isGroupLoading || isWishLoading;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
   
   // 編集権限チェック（作成者のみ＆投票開始前のみ）
   const canEdit = wish && wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
@@ -152,7 +115,6 @@ export default function EditWishContent() {
           />
         </div>
 
-        {/* 日時設定トグル */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -169,7 +131,6 @@ export default function EditWishContent() {
           </div>
         </div>
 
-        {/* 日時設定フォーム */}
         {hasDateTime && (
           <>
             <div className="bg-white rounded-xl border border-slate-200 p-4">

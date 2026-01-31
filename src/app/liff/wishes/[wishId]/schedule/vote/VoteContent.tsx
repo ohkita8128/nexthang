@@ -1,22 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useSearchParams, useParams, useRouter } from 'next/navigation';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-type Candidate = {
-  id: string;
-  date: string;
-  votes: {
-    id: string;
-    user_id: string;
-    availability: string;
-    users: { display_name: string; picture_url: string | null };
-  }[];
-};
-
-type Wish = { id: string; title: string; status: string; created_by: string };
+import { useGroup } from '@/hooks/use-group';
+import { useWish } from '@/hooks/use-wishes';
+import { useSchedule } from '@/hooks/use-schedule';
 
 const ROW1 = [
   { value: 'ok', label: '◯', short: '◯', color: 'bg-emerald-500' },
@@ -31,41 +20,63 @@ const ROW2 = [
 const ALL_OPTIONS = [...ROW1, ...ROW2];
 
 export default function VoteContent() {
-  const { profile, isReady } = useLiff();
-  const searchParams = useSearchParams();
-  const params = useParams();
   const router = useRouter();
+  const params = useParams();
   const wishId = params.wishId as string;
-  const groupId = searchParams.get('groupId');
   
-  const [wish, setWish] = useState<Wish | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const { groupId, profile, isLoading: isGroupLoading, myUserId } = useGroup();
+  const { wish, isLoading: isWishLoading, refreshWishes } = useWish(groupId, wishId);
+  const { candidates, isLoading: isScheduleLoading, refreshSchedule } = useSchedule(wishId);
+  
   const [myVotes, setMyVotes] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedConfirmDate, setSelectedConfirmDate] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
   
   const myVotesRef = useRef<Record<string, string>>({});
-  const profileRef = useRef(profile);
-  
-  useEffect(() => { profileRef.current = profile; }, [profile]);
 
-  // ユーザーID取得
+  // 初期値設定（candidatesが読み込まれた時）
   useEffect(() => {
-    const fetchUserId = async () => {
-      if (!profile?.userId) return;
-      try {
-        const res = await fetch(`/api/user-groups?lineUserId=${profile.userId}`);
-        const data = await res.json();
-        if (data?.[0]?.user_id) setMyUserId(data[0].user_id);
-      } catch (err) { console.error(err); }
-    };
-    fetchUserId();
-  }, [profile?.userId]);
+    if (candidates.length > 0 && profile && !initialized) {
+      const initial: Record<string, string> = {};
+      candidates.forEach((c) => {
+        const myVote = c.votes?.find(v => v.users?.display_name === profile.displayName);
+        initial[c.id] = myVote?.availability || '';
+      });
+      setMyVotes(initial);
+      myVotesRef.current = initial;
+      setInitialized(true);
+    }
+  }, [candidates, profile, initialized]);
+
+  const saveVotes = useCallback(async () => {
+    if (!profile) return;
+    setIsSaving(true);
+    const votes = Object.entries(myVotesRef.current)
+      .filter(([_, v]) => v)
+      .map(([candidateId, availability]) => ({ candidateId, availability }));
+    try {
+      await fetch(`/api/wishes/${wishId}/schedule/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineUserId: profile.userId, votes })
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      refreshSchedule();
+    } catch (err) { console.error(err); }
+    finally { setIsSaving(false); }
+  }, [wishId, profile, refreshSchedule]);
+
+  const handleVote = (candidateId: string, value: string) => {
+    const newValue = myVotes[candidateId] === value ? '' : value;
+    const updated = { ...myVotes, [candidateId]: newValue };
+    setMyVotes(updated);
+    myVotesRef.current = updated;
+  };
 
   // 各日付の◯の数を計算
   const getOkCounts = () => {
@@ -77,7 +88,7 @@ export default function VoteContent() {
   };
 
   // 日程確定処理
-  const confirmDate = async (candidateId: string, date: string) => {
+  const confirmDate = async (date: string) => {
     setIsConfirming(true);
     try {
       await fetch(`/api/wishes/${wishId}`, {
@@ -85,72 +96,13 @@ export default function VoteContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmedDate: date })
       });
+      refreshWishes();
       router.push(`/liff/wishes?groupId=${groupId}`);
     } catch (err) { 
       console.error(err); 
       alert('確定に失敗しました');
     }
     finally { setIsConfirming(false); setShowConfirmModal(false); }
-  };
-
-  const isOwner = wish?.created_by === myUserId;
-  const okCounts = getOkCounts();
-  const maxOk = Math.max(...Object.values(okCounts), 0);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!groupId) return;
-      try {
-        const [wishRes, candRes] = await Promise.all([
-          fetch(`/api/groups/${groupId}/wishes`),
-          fetch(`/api/wishes/${wishId}/schedule`)
-        ]);
-        const wishData = await wishRes.json();
-        const candData = await candRes.json();
-        
-        if (Array.isArray(wishData)) {
-          const found = wishData.find((w: Wish) => w.id === wishId);
-          if (found) setWish(found);
-        }
-        if (Array.isArray(candData)) {
-          setCandidates(candData);
-          const initial: Record<string, string> = {};
-          candData.forEach((c: Candidate) => {
-            const myVote = c.votes?.find(v => v.users?.display_name === profile?.displayName);
-            initial[c.id] = myVote?.availability || '';
-          });
-          setMyVotes(initial);
-          myVotesRef.current = initial;
-        }
-      } catch (err) { console.error(err); }
-      finally { setIsLoading(false); }
-    };
-    if (isReady && profile) fetchData();
-  }, [isReady, profile, groupId, wishId]);
-
-  const saveVotes = useCallback(async () => {
-    if (!profileRef.current) return;
-    setIsSaving(true);
-    const votes = Object.entries(myVotesRef.current)
-      .filter(([_, v]) => v)
-      .map(([candidateId, availability]) => ({ candidateId, availability }));
-    try {
-      await fetch(`/api/wishes/${wishId}/schedule/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineUserId: profileRef.current.userId, votes })
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (err) { console.error(err); }
-    finally { setIsSaving(false); }
-  }, [wishId]);
-
-  const handleVote = (candidateId: string, value: string) => {
-    const newValue = myVotes[candidateId] === value ? '' : value;
-    const updated = { ...myVotes, [candidateId]: newValue };
-    setMyVotes(updated);
-    myVotesRef.current = updated;
   };
 
   const formatDate = (dateStr: string) => {
@@ -160,7 +112,12 @@ export default function VoteContent() {
     return { text: `${m}/${d}(${wd})`, isSun: date.getDay() === 0, isSat: date.getDay() === 6 };
   };
 
-  if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  const isOwner = wish?.created_by === myUserId;
+  const okCounts = getOkCounts();
+  const maxOk = Math.max(...Object.values(okCounts), 0);
+
+  const isLoading = isGroupLoading || isWishLoading || isScheduleLoading;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-32">
@@ -246,6 +203,35 @@ export default function VoteContent() {
         </div>
       )}
 
+      {/* 確定確認モーダル */}
+      {showConfirmModal && selectedConfirmDate && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">日程を確定しますか？</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              {formatDate(selectedConfirmDate).text}
+              に確定します。グループに通知が送信されます。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 py-2 text-sm font-medium bg-slate-100 text-slate-600 rounded-lg"
+                disabled={isConfirming}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => confirmDate(selectedConfirmDate)}
+                className="flex-1 py-2 text-sm font-medium bg-emerald-500 text-white rounded-lg"
+                disabled={isConfirming}
+              >
+                {isConfirming ? '確定中...' : '確定する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 保存ボタン */}
       <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-slate-200 p-4">
         <button
@@ -258,40 +244,6 @@ export default function VoteContent() {
           {saved ? '✓ 保存しました' : isSaving ? '保存中...' : '回答を保存'}
         </button>
       </div>
-
-      {/* 確定確認モーダル */}
-      {showConfirmModal && selectedConfirmDate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">日程を確定しますか？</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              {(() => {
-                const [y, m, d] = selectedConfirmDate.split('-').map(Number);
-                const date = new Date(y, m - 1, d);
-                const wd = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
-                return `${m}/${d}(${wd})`;
-              })()}
-              に確定します。グループに通知が送信されます。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="flex-1 py-2 text-sm font-medium bg-slate-100 text-slate-600 rounded-lg"
-                disabled={isConfirming}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => confirmDate(candidates.find(c => c.date === selectedConfirmDate)?.id || '', selectedConfirmDate)}
-                className="flex-1 py-2 text-sm font-medium bg-emerald-500 text-white rounded-lg"
-                disabled={isConfirming}
-              >
-                {isConfirming ? '確定中...' : '確定する'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200">
         <div className="flex justify-around py-2">

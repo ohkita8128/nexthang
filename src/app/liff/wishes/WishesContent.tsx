@@ -1,105 +1,33 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useSearchParams } from 'next/navigation';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-
-type WishResponse = {
-  id: string;
-  user_id: string;
-  response: 'ok' | 'maybe' | 'ng';
-  users: { display_name: string; picture_url: string | null };
-};
-
-type Wish = {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'open' | 'voting' | 'confirmed';
-  start_date: string | null;
-  start_time: string | null;
-  end_date: string | null;
-  end_time: string | null;
-  is_all_day: boolean;
-  voting_started: boolean;
-  vote_deadline: string | null;
-  confirmed_date: string | null;
-  created_by: string;
-  created_by_user: { display_name: string; picture_url: string | null } | null;
-  interests: { id: string; user_id: string; users: { display_name: string; picture_url: string | null } }[];
-  wish_responses: WishResponse[];
-};
+import { useGroup } from '@/hooks/use-group';
+import { useWishes } from '@/hooks/use-wishes';
 
 export default function WishesContent() {
-  const { profile, context, isReady, error } = useLiff();
-  const searchParams = useSearchParams();
-  const [wishes, setWishes] = useState<Wish[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const { groupId, profile, isLoading: isGroupLoading, myUserId } = useGroup();
+  const { wishes, isLoading: isWishesLoading, refreshWishes } = useWishes(groupId);
   
   const [localInterests, setLocalInterests] = useState<Record<string, boolean>>({});
   const [localVotes, setLocalVotes] = useState<Record<string, string>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingActionsRef = useRef<{type: string; wishId: string; value?: string}[]>([]);
 
+  // 初期値設定
   useEffect(() => {
-    const fetchGroupId = async () => {
-      try {
-        const paramGroupId = searchParams.get('groupId');
-        if (paramGroupId) { setGroupId(paramGroupId); return; }
-        const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
-        if (isValidLineGroupId) { 
-          const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`); 
-          const data = await res.json(); 
-          if (res.ok && data?.id) { setGroupId(data.id); return; } 
-        }
-        const res = await fetch(`/api/user-groups?lineUserId=${profile?.userId}`); 
-        const data = await res.json();
-        if (!res.ok) { setFetchError('エラー'); setIsLoading(false); return; }
-        if (data && data.length > 0) setGroupId(data[0].group_id); 
-        else { setFetchError('所属グループがありません'); setIsLoading(false); }
-      } catch (err) { setFetchError('通信エラー'); setIsLoading(false); }
-    };
-    if (isReady && profile) fetchGroupId();
-  }, [isReady, profile, context.groupId, searchParams]);
-
-  const fetchWishes = useCallback(async () => {
-    if (!groupId) return;
-    try { 
-      const res = await fetch(`/api/groups/${groupId}/wishes`); 
-      const data = await res.json(); 
-      if (Array.isArray(data)) {
-        setWishes(data);
-        const interests: Record<string, boolean> = {};
-        const votes: Record<string, string> = {};
-        data.forEach((w: Wish) => {
-          interests[w.id] = w.interests.some(i => i.users?.display_name === profile?.displayName);
-          const myRes = w.wish_responses?.find(r => r.users?.display_name === profile?.displayName);
-          votes[w.id] = myRes?.response || '';
-        });
-        setLocalInterests(interests);
-        setLocalVotes(votes);
-      }
-    } catch (err) { console.error(err); }
-    finally { setIsLoading(false); }
-  }, [groupId, profile?.displayName]);
-
-  useEffect(() => { fetchWishes(); }, [fetchWishes]);
-
-  useEffect(() => {
-    const fetchUserId = async () => {
-      if (!profile?.userId) return;
-      try {
-        const res = await fetch(`/api/user-groups?lineUserId=${profile.userId}`);
-        const data = await res.json();
-        if (data?.[0]?.user_id) setMyUserId(data[0].user_id);
-      } catch (err) { console.error(err); }
-    };
-    fetchUserId();
-  }, [profile?.userId]);
+    if (wishes.length > 0 && profile) {
+      const interests: Record<string, boolean> = {};
+      const votes: Record<string, string> = {};
+      wishes.forEach((w) => {
+        interests[w.id] = w.interests.some(i => i.users?.display_name === profile?.displayName);
+        const myRes = w.wish_responses?.find(r => r.users?.display_name === profile?.displayName);
+        votes[w.id] = myRes?.response || '';
+      });
+      setLocalInterests(interests);
+      setLocalVotes(votes);
+    }
+  }, [wishes, profile]);
 
   const processPendingActions = useCallback(async () => {
     const actions = [...pendingActionsRef.current];
@@ -117,7 +45,8 @@ export default function WishesContent() {
         }
       } catch (err) { console.error(err); }
     }
-  }, [profile?.userId]);
+    refreshWishes();
+  }, [profile?.userId, refreshWishes]);
 
   const toggleInterest = (wishId: string) => {
     const current = localInterests[wishId];
@@ -127,19 +56,10 @@ export default function WishesContent() {
     saveTimeoutRef.current = setTimeout(processPendingActions, 300);
   };
 
-  const handleVote = (wishId: string, vote: 'ok' | 'maybe' | 'ng') => {
-    const current = localVotes[wishId];
-    const newVote = current === vote ? '' : vote;
-    setLocalVotes(prev => ({ ...prev, [wishId]: newVote }));
-    pendingActionsRef.current.push({ type: 'vote', wishId, value: newVote });
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(processPendingActions, 300);
-  };
-
   const startVoting = async (wishId: string) => {
     try {
       await fetch(`/api/wishes/${wishId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ votingStarted: true }) });
-      await fetchWishes();
+      refreshWishes();
     } catch (err) { console.error(err); }
   };
 
@@ -147,11 +67,11 @@ export default function WishesContent() {
     if (!confirm('削除しますか？')) return;
     try {
       await fetch(`/api/wishes/${wishId}`, { method: 'DELETE' });
-      setWishes(prev => prev.filter(w => w.id !== wishId));
+      refreshWishes();
     } catch (err) { console.error(err); alert('削除に失敗しました'); }
   };
 
-  const formatDateTime = (wish: Wish) => {
+  const formatDateTime = (wish: typeof wishes[0]) => {
     if (!wish.start_date) return null;
     const [y, m, d] = wish.start_date.split('-').map(Number);
     const date = new Date(y, m - 1, d);
@@ -189,7 +109,7 @@ export default function WishesContent() {
     return `あと${days}日`;
   };
 
-  const getResponseCounts = (wish: Wish) => {
+  const getResponseCounts = (wish: typeof wishes[0]) => {
     if (!wish.wish_responses) return { ok: 0, maybe: 0, ng: 0 };
     return {
       ok: wish.wish_responses.filter(r => r.response === 'ok').length,
@@ -198,15 +118,15 @@ export default function WishesContent() {
     };
   };
 
-  const canDelete = (wish: Wish) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
-  const canEdit = (wish: Wish) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
+  const canDelete = (wish: typeof wishes[0]) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
+  const canEdit = (wish: typeof wishes[0]) => wish.created_by === myUserId && !wish.voting_started && wish.status === 'open';
 
   useEffect(() => {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); processPendingActions(); };
   }, [processPendingActions]);
 
-  if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
-  if (error || fetchError) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white rounded-xl border p-6 text-center"><p className="text-slate-500">{error || fetchError}</p><Link href="/liff" className="inline-block mt-4 px-4 py-2 bg-slate-100 text-sm rounded-lg">戻る</Link></div></div>;
+  if (isGroupLoading || isWishesLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  if (!groupId) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white rounded-xl border p-6 text-center"><p className="text-slate-500">グループが見つかりません</p><Link href="/liff" className="inline-block mt-4 px-4 py-2 bg-slate-100 text-sm rounded-lg">戻る</Link></div></div>;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -226,7 +146,6 @@ export default function WishesContent() {
           {wishes.map((wish) => {
             const hasDateTime = !!wish.start_date;
             const hasInterest = localInterests[wish.id] ?? false;
-            const myVote = localVotes[wish.id] || '';
             const counts = getResponseCounts(wish);
             const isVoting = wish.voting_started || wish.status === 'voting';
             const isConfirmed = wish.status === 'confirmed';
@@ -234,7 +153,6 @@ export default function WishesContent() {
             
             return (
               <div key={wish.id} className={`px-4 py-4 ${isConfirmed ? 'bg-blue-50' : ''}`}>
-                {/* 1行目: タイトル + 人数 */}
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold text-base text-slate-900">{wish.title}</h3>
@@ -258,22 +176,18 @@ export default function WishesContent() {
                   </div>
                 </div>
 
-                {/* 2行目: 日時 */}
                 {hasDateTime && (
                   <p className="text-sm text-emerald-600 mt-1">📅 {formatDateTime(wish)}</p>
                 )}
 
-                {/* 締め切り表示 */}
                 {wish.vote_deadline && isVoting && (
                   <p className="text-xs text-orange-500 mt-1">⏰ {formatDeadline(wish.vote_deadline)}</p>
                 )}
 
-                {/* 3行目: 説明 */}
                 {wish.description && (
                   <p className="text-sm text-slate-500 mt-1">{wish.description}</p>
                 )}
 
-                {/* 4行目: ボタン */}
                 <div className="mt-3">
                   {isConfirmed ? (
                     <div className="flex items-center gap-2">

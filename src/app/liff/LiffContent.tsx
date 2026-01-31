@@ -1,131 +1,16 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useLiff } from '@/hooks/use-liff';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-type WishResponse = {
-  id: string;
-  user_id: string;
-  response: 'ok' | 'maybe' | 'ng';
-  users: { display_name: string };
-};
-
-type Wish = {
-  id: string;
-  title: string;
-  status: 'open' | 'voting' | 'confirmed';
-  start_date: string | null;
-  start_time: string | null;
-  voting_started: boolean;
-  vote_deadline: string | null;
-  interests: { id: string; users: { display_name: string } }[];
-  wish_responses: WishResponse[];
-};
-
-type Group = {
-  group_id: string;
-  groups: { id: string; name: string; last_activity_at: string };
-};
+import { useGroup } from '@/hooks/use-group';
+import { useWishes } from '@/hooks/use-wishes';
 
 export default function LiffContent() {
-  const { profile, context, isReady, error } = useLiff();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [wishes, setWishes] = useState<Wish[]>([]);
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [groupName, setGroupName] = useState<string | null>(null);
-  const [allGroups, setAllGroups] = useState<Group[]>([]);
-  const [loadingState, setLoadingState] = useState<string>('初期化中...');
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const { groupId, groupName, setGroupId, setGroupName, allGroups, profile, isLoading } = useGroup();
+  const { wishes } = useWishes(groupId);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
-
-  const fetchGroups = useCallback(async () => {
-    if (!profile?.userId) return [];
-    try {
-      const res = await fetch(`/api/user-groups?lineUserId=${profile.userId}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        // last_activity_at順にソート
-        const sorted = data.sort((a: Group, b: Group) => {
-          const aTime = a.groups?.last_activity_at || '1970-01-01';
-          const bTime = b.groups?.last_activity_at || '1970-01-01';
-          return bTime.localeCompare(aTime);
-        });
-        setAllGroups(sorted);
-        return sorted;
-      }
-      return [];
-    } catch (err) {
-      console.error(err);
-      return [];
-    }
-  }, [profile?.userId]);
-
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const paramGroupId = searchParams.get('groupId');
-        if (paramGroupId) {
-          setGroupId(paramGroupId);
-          const groups = await fetchGroups();
-          const found = groups.find((g: Group) => g.group_id === paramGroupId);
-          if (found?.groups?.name) setGroupName(found.groups.name);
-          setLoadingState('');
-          return;
-        }
-        
-        const isValidLineGroupId = context.groupId && context.groupId.startsWith('C');
-        if (isValidLineGroupId) {
-          setLoadingState('グループ情報を取得中...');
-          const res = await fetch(`/api/groups/by-line-id?lineGroupId=${context.groupId}`);
-          const data = await res.json();
-          if (res.ok && data?.id) {
-            setGroupId(data.id);
-            setGroupName(data.name);
-            await fetchGroups();
-            setLoadingState('');
-            return;
-          }
-        }
-        
-        setLoadingState('所属グループを確認中...');
-        const groups = await fetchGroups();
-        if (groups.length === 0) {
-          setFetchError('所属グループがありません。\n\nBotをグループに招待して、\nグループで何かメッセージを送ってください。');
-          setLoadingState('');
-          return;
-        }
-        if (groups.length === 1) {
-          setGroupId(groups[0].group_id);
-          setGroupName(groups[0].groups?.name || null);
-          setLoadingState('');
-          return;
-        }
-        // 複数グループがある場合は最もアクティブなものを選択
-        setGroupId(groups[0].group_id);
-        setGroupName(groups[0].groups?.name || null);
-        setLoadingState('');
-      } catch (err) {
-        setFetchError('通信エラー');
-        setLoadingState('');
-      }
-    };
-    if (isReady && profile) init();
-  }, [isReady, profile, context.groupId, searchParams, fetchGroups]);
-
-  useEffect(() => {
-    const fetchWishes = async () => {
-      if (!groupId) return;
-      try {
-        const res = await fetch(`/api/groups/${groupId}/wishes`);
-        const data = await res.json();
-        if (Array.isArray(data)) setWishes(data);
-      } catch (err) { console.error(err); }
-    };
-    fetchWishes();
-  }, [groupId]);
 
   const switchGroup = (newGroupId: string, newGroupName: string | null) => {
     setGroupId(newGroupId);
@@ -164,15 +49,15 @@ export default function LiffContent() {
       .slice(0, 5);
   };
 
-  // 人気の行きたいリスト
+  // 人気の行きたい
   const getPopularWishes = () => {
-    return [...wishes]
-      .filter(w => !w.start_date && w.status === 'open')
+    return wishes
+      .filter(w => w.status === 'open' && !w.start_date)
       .sort((a, b) => b.interests.length - a.interests.length)
       .slice(0, 5);
   };
 
-  const formatDateTime = (wish: Wish) => {
+  const formatDateTime = (wish: typeof wishes[0]) => {
     if (!wish.start_date) return '';
     const [y, m, d] = wish.start_date.split('-').map(Number);
     const date = new Date(y, m - 1, d);
@@ -187,13 +72,13 @@ export default function LiffContent() {
     const now = new Date();
     const diff = d.getTime() - now.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    if (diff < 0) return '締め切りました';
+    if (diff < 0) return '締め切り';
     if (days === 0) return '今日まで';
     if (days === 1) return '明日まで';
     return `あと${days}日`;
   };
 
-  const getResponseCounts = (wish: Wish) => {
+  const getResponseCounts = (wish: typeof wishes[0]) => {
     if (!wish.wish_responses) return { ok: 0, maybe: 0, ng: 0 };
     return {
       ok: wish.wish_responses.filter(r => r.response === 'ok').length,
@@ -202,27 +87,25 @@ export default function LiffContent() {
     };
   };
 
-  if (!isReady) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
-  if (error) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white rounded-xl border p-6 text-center"><p className="text-red-500">{error}</p></div></div>;
-  if (loadingState || fetchError) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white rounded-xl border border-slate-200 p-6 max-w-sm w-full text-center">{loadingState && <><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto" /><p className="text-sm text-slate-500 mt-3">{loadingState}</p></>}{fetchError && <p className="text-sm text-slate-500 whitespace-pre-line">{fetchError}</p>}</div></div>;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
+  if (!groupId) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white rounded-xl border p-6 text-center"><p className="text-slate-500 whitespace-pre-line">所属グループがありません。{'\n\n'}Botをグループに招待して、{'\n'}グループで何かメッセージを送ってください。</p></div></div>;
 
   const unanswered = getUnansweredVotes();
   const upcoming = getUpcomingEvents();
   const popular = getPopularWishes();
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* ヘッダー */}
-      <header className="bg-white border-b border-slate-200 px-4 py-4">
+    <div className="min-h-screen bg-slate-50 pb-16">
+      <header className="bg-white border-b border-slate-200 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">🎯 あそボット</h1>
-            <button
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold text-slate-900">あそボット</h1>
+            <button 
               onClick={() => setShowGroupSheet(true)}
-              className="flex items-center gap-1 text-sm text-slate-500 mt-0.5"
+              className="flex items-center gap-1 px-2 py-1 text-sm text-slate-500 bg-slate-100 rounded-lg"
             >
-              {groupName || 'グループ'}
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="max-w-[120px] truncate">{groupName || 'グループ'}</span>
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>

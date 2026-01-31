@@ -100,7 +100,7 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
       console.log('Could not get group name:', e);
     }
 
-    const { error } = await supabase
+    const { data: groupData, error } = await supabase
       .from('groups')
       .upsert({
         line_group_id: groupId,
@@ -108,12 +108,57 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'line_group_id',
-      });
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error('Error saving group:', error);
     } else {
       console.log('Group saved:', groupName || groupId);
+    }
+
+    // 既存メンバーを全員取得して登録
+    if (groupData) {
+      try {
+        const memberIds = await lineClient.getGroupMembersIds(groupId!);
+        console.log(`Found ${memberIds.memberIds.length} existing members`);
+        
+        for (const memberId of memberIds.memberIds) {
+          try {
+            const profile = await lineClient.getGroupMemberProfile(groupId!, memberId);
+            
+            const { data: userData } = await supabase
+              .from('users')
+              .upsert({
+                line_user_id: memberId,
+                display_name: profile.displayName,
+                picture_url: profile.pictureUrl,
+                updated_at: new Date().toISOString(),
+              }, {
+                onConflict: 'line_user_id',
+              })
+              .select()
+              .single();
+
+            if (userData) {
+              await supabase
+                .from('group_members')
+                .upsert({
+                  group_id: groupData.id,
+                  user_id: userData.id,
+                }, {
+                  onConflict: 'group_id,user_id',
+                });
+              console.log('Existing member registered:', profile.displayName);
+            }
+          } catch (memberErr) {
+            console.error('Error registering member:', memberId, memberErr);
+          }
+        }
+      } catch (membersErr) {
+        console.error('Error getting group members:', membersErr);
+      }
     }
 
     await lineClient.replyMessage({
@@ -277,28 +322,30 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
         .select()
         .single();
 
-      // グループ情報を取得（なければ作成、名前がなければ更新）
+      // グループ情報を取得（グループ名は毎回最新を取得）
       let { data: groupData } = await supabase
         .from('groups')
         .select('id, name')
         .eq('line_group_id', groupId)
         .single();
 
-      // グループがない、または名前がない場合は取得して更新
-      if (!groupData || !groupData.name) {
-        let groupName = null;
-        try {
-          const groupSummary = await lineClient.getGroupSummary(groupId!);
-          groupName = groupSummary.groupName;
-        } catch (e) {
-          console.log('Could not get group name:', e);
-        }
+      // グループ名を取得して更新（毎回最新に）
+      let groupName = null;
+      try {
+        const groupSummary = await lineClient.getGroupSummary(groupId!);
+        groupName = groupSummary.groupName;
+      } catch (e) {
+        console.log('Could not get group name:', e);
+      }
 
+      // グループがない、または名前が変わった場合は更新
+      if (!groupData || groupData.name !== groupName) {
         const { data: upsertedGroup } = await supabase
           .from('groups')
           .upsert({
             line_group_id: groupId,
             name: groupName,
+            last_activity_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, {
             onConflict: 'line_group_id',
@@ -307,6 +354,15 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
           .single();
         
         groupData = upsertedGroup;
+        if (groupName) {
+          console.log('Group name updated:', groupName);
+        }
+      } else {
+        // 名前が同じでもlast_activity_atは更新
+        await supabase
+          .from('groups')
+          .update({ last_activity_at: new Date().toISOString() })
+          .eq('line_group_id', groupId);
       }
 
       // group_members に登録
@@ -373,6 +429,77 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
         },
       }],
     });
+  }
+
+  // メンバー同期コマンド
+  if ((text === '同期' || text === 'sync') && event.source.type === 'group') {
+    const groupId = event.source.groupId;
+    
+    try {
+      const { data: groupData } = await supabase
+        .from('groups')
+        .select('id')
+        .eq('line_group_id', groupId)
+        .single();
+
+      if (!groupData) {
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: 'text', text: 'グループが見つかりません' }],
+        });
+        return;
+      }
+
+      const memberIds = await lineClient.getGroupMembersIds(groupId!);
+      let syncCount = 0;
+      
+      for (const memberId of memberIds.memberIds) {
+        try {
+          const profile = await lineClient.getGroupMemberProfile(groupId!, memberId);
+          
+          const { data: userData } = await supabase
+            .from('users')
+            .upsert({
+              line_user_id: memberId,
+              display_name: profile.displayName,
+              picture_url: profile.pictureUrl,
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'line_user_id',
+            })
+            .select()
+            .single();
+
+          if (userData) {
+            await supabase
+              .from('group_members')
+              .upsert({
+                group_id: groupData.id,
+                user_id: userData.id,
+              }, {
+                onConflict: 'group_id,user_id',
+              });
+            syncCount++;
+          }
+        } catch (memberErr) {
+          console.error('Error syncing member:', memberId, memberErr);
+        }
+      }
+
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ 
+          type: 'text', 
+          text: `✅ メンバーを同期しました！\n${syncCount}人のメンバーを登録しました。` 
+        }],
+      });
+    } catch (err) {
+      console.error('Error in sync command:', err);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: '同期に失敗しました' }],
+      });
+    }
   }
 }
 
