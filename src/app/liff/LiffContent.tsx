@@ -170,7 +170,7 @@ export default function LiffContent() {
               {unanswered.map((wish) => (
                 <Link
                   key={wish.id}
-                  href={wish.start_date ? `/liff/wishes?groupId=${groupId}` : `/liff/wishes/${wish.id}/schedule/vote?groupId=${groupId}`}
+                  href={wish.start_date ? `/liff/wishes/${wish.id}/confirm?groupId=${groupId}` : `/liff/wishes/${wish.id}/schedule/vote?groupId=${groupId}`}
                   className="flex items-center justify-between px-4 py-3"
                 >
                   <div className="min-w-0">
