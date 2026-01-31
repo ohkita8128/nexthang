@@ -179,7 +179,7 @@ export default function WishesContent() {
                     {isConfirmed ? (
                       <span className="text-sm text-blue-500 font-medium">✓確定</span>
                     ) : (
-                      <span className="text-sm text-slate-400">{interestCount}人が興味あり</span>
+                      <span className="text-sm text-slate-400">{interestCount}人が行きたい</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
@@ -228,7 +228,7 @@ export default function WishesContent() {
                           hasInterest ? 'bg-slate-100 text-slate-400' : 'bg-emerald-500 text-white'
                         }`}
                       >
-                        {hasInterest ? '✓興味あり' : '興味あり'}
+                        {hasInterest ? '✓行きたい' : '行きたい'}
                       </button>
                       <Link href={`/liff/wishes/${wish.id}/confirm?groupId=${groupId}`} className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-500 text-white">
                         参加確認に回答
@@ -247,7 +247,7 @@ export default function WishesContent() {
                           hasInterest ? 'bg-slate-100 text-slate-400' : 'bg-emerald-500 text-white'
                         }`}
                       >
-                        {hasInterest ? '✓興味あり' : '興味あり'}
+                        {hasInterest ? '✓行きたい' : '行きたい'}
                       </button>
                       <Link href={`/liff/wishes/${wish.id}/schedule/vote?groupId=${groupId}`} className="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-500 text-white">
                         日程調整に回答
@@ -261,7 +261,7 @@ export default function WishesContent() {
                           hasInterest ? 'bg-slate-100 text-slate-400' : 'bg-emerald-500 text-white'
                         }`}
                       >
-                        {hasInterest ? '✓興味あり' : '興味あり'}
+                        {hasInterest ? '✓行きたい' : '行きたい'}
                       </button>
                       
                       {hasDateTime ? (

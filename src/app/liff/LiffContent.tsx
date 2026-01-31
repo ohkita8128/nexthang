@@ -257,7 +257,7 @@ export default function LiffContent() {
               {popular.map((wish) => (
                 <Link key={wish.id} href={`/liff/wishes?groupId=${groupId}`} className="flex items-center justify-between px-4 py-3">
                   <p className="text-sm font-medium text-slate-900 truncate">{wish.title}</p>
-                  <span className="text-xs text-slate-400 flex-shrink-0">{wish.interests.length}人が興味あり</span>
+                  <span className="text-xs text-slate-400 flex-shrink-0">{wish.interests.length}人が行きたい</span>
                 </Link>
               ))}
             </div>
