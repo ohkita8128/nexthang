@@ -80,13 +80,13 @@ export default function CalendarContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      <header className="bg-white border-b border-slate-200 px-4 py-4"><h1 className="text-lg font-semibold text-slate-900">日程調整</h1></header>
+      <header className="bg-white border-b border-slate-200 px-4 py-4"><h1 className="text-lg font-semibold text-slate-900">予定</h1></header>
       <main className="px-4 py-6 space-y-4">
         {events.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-6 text-center">
             <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
             <p className="text-slate-500 mb-4">まだ予定がありません</p>
-            <Link href={`/liff/events/new?groupId=${groupId}`} className="inline-block px-6 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg">日程調整を作成</Link>
+            <Link href={`/liff/events/new?groupId=${groupId}`} className="inline-block px-6 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg">予定を追加</Link>
           </div>
         ) : (
           <div className="space-y-3">
