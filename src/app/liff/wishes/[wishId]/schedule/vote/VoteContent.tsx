@@ -19,14 +19,14 @@ type Candidate = {
 type Wish = { id: string; title: string };
 
 const ROW1 = [
-  { value: 'ok', label: '◯', color: 'bg-emerald-500' },
-  { value: 'ng', label: '×', color: 'bg-red-500' },
-  { value: 'undecided', label: '未定', color: 'bg-slate-500' },
+  { value: 'ok', label: '◯', short: '◯', color: 'bg-emerald-500' },
+  { value: 'ng', label: '×', short: '×', color: 'bg-red-500' },
+  { value: 'undecided', label: '未定', short: '?', color: 'bg-slate-500' },
 ];
 const ROW2 = [
-  { value: 'morning', label: '午前', color: 'bg-blue-500' },
-  { value: 'afternoon', label: '午後', color: 'bg-amber-500' },
-  { value: 'evening', label: '夜', color: 'bg-purple-500' },
+  { value: 'morning', label: '午前', short: '前', color: 'bg-blue-500' },
+  { value: 'afternoon', label: '午後', short: '後', color: 'bg-amber-500' },
+  { value: 'evening', label: '夜', short: '夜', color: 'bg-purple-500' },
 ];
 const ALL_OPTIONS = [...ROW1, ...ROW2];
 
@@ -41,8 +41,9 @@ export default function VoteContent() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [myVotes, setMyVotes] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const myVotesRef = useRef<Record<string, string>>({});
   const profileRef = useRef(profile);
   
@@ -81,6 +82,7 @@ export default function VoteContent() {
 
   const saveVotes = useCallback(async () => {
     if (!profileRef.current) return;
+    setIsSaving(true);
     const votes = Object.entries(myVotesRef.current)
       .filter(([_, v]) => v)
       .map(([candidateId, availability]) => ({ candidateId, availability }));
@@ -90,7 +92,10 @@ export default function VoteContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lineUserId: profileRef.current.userId, votes })
       });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } catch (err) { console.error(err); }
+    finally { setIsSaving(false); }
   }, [wishId]);
 
   const handleVote = (candidateId: string, value: string) => {
@@ -98,14 +103,7 @@ export default function VoteContent() {
     const updated = { ...myVotes, [candidateId]: newValue };
     setMyVotes(updated);
     myVotesRef.current = updated;
-    
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(saveVotes, 300);
   };
-
-  useEffect(() => {
-    return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); saveVotes(); };
-  }, [saveVotes]);
 
   const formatDate = (dateStr: string) => {
     const [y, m, d] = dateStr.split('-').map(Number);
@@ -117,7 +115,7 @@ export default function VoteContent() {
   if (!isReady || isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" /></div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
+    <div className="min-h-screen bg-slate-50 pb-32">
       <header className="bg-white border-b border-slate-200 px-4 py-3">
         <div className="flex items-center gap-3">
           <Link href={`/liff/wishes?groupId=${groupId}`} className="text-slate-400">
@@ -136,9 +134,7 @@ export default function VoteContent() {
           const vote = myVotes[c.id] || '';
           return (
             <div key={c.id} className="px-4 py-3">
-              {/* 日付 */}
               <p className={`text-base font-medium mb-2 ${isSun ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-700'}`}>{text}</p>
-              {/* ボタン2段 */}
               <div className="grid grid-cols-3 gap-2">
                 {ROW1.map(o => (
                   <button key={o.value} onClick={() => handleVote(c.id, o.value)}
@@ -173,7 +169,7 @@ export default function VoteContent() {
                       const v = c.votes?.find(x => x.users?.display_name === name);
                       const opt = ALL_OPTIONS.find(o => o.value === v?.availability);
                       return <td key={c.id} className="text-center py-2 px-1">
-                        {opt ? <span className={`inline-block w-6 h-6 leading-6 rounded text-white text-xs ${opt.color}`}>{opt.value === 'ok' ? '◯' : opt.value === 'ng' ? '×' : opt.label[0]}</span> : <span className="text-slate-200">-</span>}
+                        {opt ? <span className={`inline-block w-6 h-6 leading-6 rounded text-white text-xs ${opt.color}`}>{opt.short}</span> : <span className="text-slate-200">-</span>}
                       </td>;
                     })}
                   </tr>
@@ -183,6 +179,19 @@ export default function VoteContent() {
           </div>
         </div>
       )}
+
+      {/* 保存ボタン */}
+      <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-slate-200 p-4">
+        <button
+          onClick={saveVotes}
+          disabled={isSaving}
+          className={`w-full py-3 rounded-xl text-sm font-semibold transition ${
+            saved ? 'bg-emerald-500 text-white' : isSaving ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'
+          }`}
+        >
+          {saved ? '✓ 保存しました' : isSaving ? '保存中...' : '回答を保存'}
+        </button>
+      </div>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200">
         <div className="flex justify-around py-2">

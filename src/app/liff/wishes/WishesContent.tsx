@@ -263,28 +263,47 @@ export default function WishesContent() {
                 {/* 4行目: ボタン */}
                 <div className="mt-3">
                   {isVoting && hasDateTime ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-2">
-                        {(['ok', 'maybe', 'ng'] as const).map((v) => (
-                          <button
-                            key={v}
-                            onClick={() => handleVote(wish.id, v)}
-                            className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                              myVote === v
-                                ? (v === 'ok' ? 'bg-emerald-500 text-white' : v === 'maybe' ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {v === 'ok' ? '◯' : v === 'maybe' ? '△' : '✕'}
-                          </button>
-                        ))}
+                    <>
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-2">
+                          {(['ok', 'maybe', 'ng'] as const).map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => handleVote(wish.id, v)}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                                myVote === v
+                                  ? (v === 'ok' ? 'bg-emerald-500 text-white' : v === 'maybe' ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {v === 'ok' ? '◯' : v === 'maybe' ? '△' : '✕'}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="text-sm text-slate-400">
+                          <span className="text-emerald-500">◯{counts.ok}</span>
+                          <span className="text-amber-500 ml-2">△{counts.maybe}</span>
+                          <span className="text-red-500 ml-2">✕{counts.ng}</span>
+                        </span>
                       </div>
-                      <span className="text-sm text-slate-400">
-                        <span className="text-emerald-500">◯{counts.ok}</span>
-                        <span className="text-amber-500 ml-2">△{counts.maybe}</span>
-                        <span className="text-red-500 ml-2">✕{counts.ng}</span>
-                      </span>
-                    </div>
+                      {/* 投票者表示 */}
+                      {wish.wish_responses && wish.wish_responses.length > 0 && (
+                        <div className="mt-2 text-xs text-slate-400">
+                          {(['ok', 'maybe', 'ng'] as const).map((v) => {
+                            const voters = wish.wish_responses.filter(r => r.response === v);
+                            if (voters.length === 0) return null;
+                            return (
+                              <span key={v} className="mr-3">
+                                <span className={v === 'ok' ? 'text-emerald-500' : v === 'maybe' ? 'text-amber-500' : 'text-red-500'}>
+                                  {v === 'ok' ? '◯' : v === 'maybe' ? '△' : '✕'}
+                                </span>
+                                {voters.map(r => r.users?.display_name).join(', ')}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   ) : isVoting && !hasDateTime ? (
                     <div className="flex items-center gap-2">
                       <button 

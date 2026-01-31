@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 
-// 回答を保存/更新
+// 回答を保存/更新/削除
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ wishId: string }> }
@@ -20,6 +20,21 @@ export async function POST(
 
     if (userError || !userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // 空文字の場合は削除
+    if (!response || response === '') {
+      const { error } = await supabase
+        .from('wish_responses')
+        .delete()
+        .eq('wish_id', wishId)
+        .eq('user_id', userData.id);
+
+      if (error) {
+        console.error('Error deleting response:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ deleted: true });
     }
 
     // upsert
