@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { lineUserId, displayName, pictureUrl, lineGroupId } = body;
+    const { lineUserId, displayName, pictureUrl, lineGroupId, groupId } = body;
 
     if (!lineUserId) {
       return NextResponse.json({ error: 'lineUserId is required' }, { status: 400 });
@@ -30,24 +30,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to register user' }, { status: 500 });
     }
 
-    // グループIDがあれば、そのグループにも登録
-    if (lineGroupId && userData) {
-      const { data: groupData } = await supabase
-        .from('groups')
-        .select('id')
-        .eq('line_group_id', lineGroupId)
-        .single();
+    // グループメンバー登録
+    if (userData) {
+      let targetGroupId = groupId; // URLパラメータから直接来たDBのグループID
 
-      if (groupData) {
+      // lineGroupIdがある場合はそれからDBのグループIDを取得
+      if (!targetGroupId && lineGroupId) {
+        const { data: groupData } = await supabase
+          .from('groups')
+          .select('id')
+          .eq('line_group_id', lineGroupId)
+          .single();
+        
+        if (groupData) {
+          targetGroupId = groupData.id;
+        }
+      }
+
+      // グループIDがあればメンバー登録
+      if (targetGroupId) {
         await supabase
           .from('group_members')
           .upsert({
-            group_id: groupData.id,
+            group_id: targetGroupId,
             user_id: userData.id,
           }, {
             onConflict: 'group_id,user_id',
           });
-        console.log('Member registered via LIFF:', displayName);
+        console.log('Member registered:', displayName, '-> group:', targetGroupId);
       }
     }
 

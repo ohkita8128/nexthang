@@ -105,24 +105,24 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
   const source = event.source;
   if (source.type !== 'group') return;
 
-  const groupId = source.groupId;
-  const liffUrl = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}`;
+  const lineGroupId = source.groupId;
+  const baseLiffUrl = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}`;
   const botFriendUrl = process.env.LINE_BOT_FRIEND_URL || 'https://line.me/R/ti/p/@asobott';
 
   try {
     // グループ名を取得
     let groupName = null;
     try {
-      const groupSummary = await lineClient.getGroupSummary(groupId!);
+      const groupSummary = await lineClient.getGroupSummary(lineGroupId!);
       groupName = groupSummary.groupName;
     } catch (e) {
       console.log('Could not get group name:', e);
     }
 
-    const { error } = await supabase
+    const { data: groupData, error } = await supabase
       .from('groups')
       .upsert({
-        line_group_id: groupId,
+        line_group_id: lineGroupId,
         name: groupName,
         updated_at: new Date().toISOString(),
       }, {
@@ -134,8 +134,13 @@ async function handleJoin(event: WebhookEvent & { type: 'join' }) {
     if (error) {
       console.error('Error saving group:', error);
     } else {
-      console.log('Group saved:', groupName || groupId);
+      console.log('Group saved:', groupName || lineGroupId);
     }
+
+    // DBのグループIDを使ってLIFF URLを生成
+    const liffUrl = groupData?.id 
+      ? `${baseLiffUrl}?groupId=${groupData.id}` 
+      : baseLiffUrl;
 
     await lineClient.replyMessage({
       replyToken: event.replyToken,

@@ -53,10 +53,11 @@ export function useGroup() {
             displayName: profile.displayName,
             pictureUrl: profile.pictureUrl,
             lineGroupId: lineGroupId,
+            groupId: paramGroupId, // URLパラメータのグループID（DBのID）
           }),
         });
         // グループ登録後にリストを更新
-        if (lineGroupId) {
+        if (lineGroupId || paramGroupId) {
           mutateUserGroups();
         }
       } catch (err) {
@@ -65,7 +66,7 @@ export function useGroup() {
     };
 
     registerUser();
-  }, [isReady, profile, lineGroupId, mutateUserGroups]);
+  }, [isReady, profile, lineGroupId, paramGroupId, mutateUserGroups]);
 
   useEffect(() => {
     if (!isReady) return;

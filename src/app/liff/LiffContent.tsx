@@ -129,7 +129,7 @@ export default function LiffContent() {
       {showGroupSheet && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowGroupSheet(false)} />
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[60vh] overflow-hidden animate-slide-up">
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[70vh] overflow-hidden animate-slide-up">
             <div className="p-4 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">グループを選択</h2>
@@ -140,21 +140,33 @@ export default function LiffContent() {
                 </button>
               </div>
             </div>
-            <div className="overflow-y-auto max-h-[calc(60vh-80px)]">
-              {allGroups.map((g) => (
-                <button
-                  key={g.group_id}
-                  onClick={() => switchGroup(g.group_id, g.groups?.name || null)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-100"
-                >
-                  <span className="text-sm text-slate-700">{g.groups?.name || '名前なし'}</span>
-                  {g.group_id === groupId && (
-                    <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+            <div className="overflow-y-auto max-h-[calc(70vh-140px)]">
+              {allGroups.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-sm text-slate-500">グループがありません</p>
+                </div>
+              ) : (
+                allGroups.map((g) => (
+                  <button
+                    key={g.group_id}
+                    onClick={() => switchGroup(g.group_id, g.groups?.name || null)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 border-b border-slate-100"
+                  >
+                    <span className="text-sm text-slate-700">{g.groups?.name || '名前なし'}</span>
+                    {g.group_id === groupId && (
+                      <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+            {/* ヘルプ */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200">
+              <p className="text-xs text-slate-500">
+                💡 グループが表示されない場合は、<span className="font-medium">グループトークから</span>管理画面を開くか、グループで何かメッセージを送ってください。
+              </p>
             </div>
           </div>
         </div>
