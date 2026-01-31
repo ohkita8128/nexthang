@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
-import { notifyReminder, notifySuggestion } from '@/lib/line/notification';
+import { notifyReminder, notifySuggestion, notifySuggestionEmpty } from '@/lib/line/notification';
 
 // Vercel Cron用のAPI - 毎日実行
 export async function GET(request: NextRequest) {
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     // 3. おすすめ提案
     const { data: groups } = await supabase
       .from('group_settings')
-      .select('group_id, suggest_enabled, suggest_interval_days, suggest_min_interests')
+      .select('group_id, suggest_enabled, suggest_interval_days')
       .eq('suggest_enabled', true);
 
     for (const group of groups || []) {
@@ -106,6 +106,14 @@ export async function GET(request: NextRequest) {
         if (daysSince < group.suggest_interval_days) continue;
       }
 
+      // グループメンバー数を取得
+      const { count: memberCount } = await supabase
+        .from('group_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', group.group_id);
+
+      const minInterests = Math.max(2, Math.ceil((memberCount || 0) * 0.3));
+
       // 人気の行きたいを取得
       const { data: wishes } = await supabase
         .from('wishes')
@@ -122,15 +130,19 @@ export async function GET(request: NextRequest) {
           title: w.title,
           interestCount: Array.isArray(w.interests) ? w.interests.length : 0
         }))
-        .filter(w => w.interestCount >= group.suggest_min_interests)
+        .filter(w => w.interestCount >= minInterests)
         .sort((a, b) => b.interestCount - a.interestCount)
         .slice(0, 3);
 
-      if (popularWishes.length === 0) continue;
-
       const liffUrl = `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}/wishes?groupId=${group.group_id}`;
-      await notifySuggestion(group.group_id, popularWishes, liffUrl);
-      results.suggestions.push(group.group_id);
+
+      if (popularWishes.length > 0) {
+        await notifySuggestion(group.group_id, popularWishes, liffUrl);
+        results.suggestions.push(`${group.group_id}: ${popularWishes.length}件`);
+      } else {
+        await notifySuggestionEmpty(group.group_id, liffUrl);
+        results.suggestions.push(`${group.group_id}: 候補なし`);
+      }
     }
 
     return NextResponse.json({ 

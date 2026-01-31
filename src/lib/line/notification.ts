@@ -109,9 +109,11 @@ export async function sendGroupNotification({ groupId, wishId, type, message }: 
 
 // 日程調整開始通知
 export async function notifyScheduleStart(groupId: string, wishId: string, title: string, liffUrl: string) {
-  const message = `📅 日程調整が始まりました！
+  const message = `🎩 あそボット より
 
-「${title}」
+📋「${title}」の日程調整が始まりました。
+
+ご都合をお聞かせください。
 
 ▼ 回答はこちら
 ${liffUrl}`;
@@ -126,10 +128,13 @@ ${liffUrl}`;
 
 // 参加確認開始通知
 export async function notifyConfirmStart(groupId: string, wishId: string, title: string, dateStr: string, liffUrl: string) {
-  const message = `✅ 参加確認が始まりました！
+  const message = `🎩 あそボット より
 
-「${title}」
+📋「${title}」の参加確認が始まりました。
+
 📅 ${dateStr}
+
+ご都合をお聞かせください。
 
 ▼ 回答はこちら
 ${liffUrl}`;
@@ -145,12 +150,15 @@ ${liffUrl}`;
 // 締め切りリマインド通知
 export async function notifyReminder(groupId: string, wishId: string, title: string, daysLeft: number, type: 'schedule' | 'confirm', liffUrl: string) {
   const typeLabel = type === 'schedule' ? '日程調整' : '参加確認';
-  const message = `⏰ ${typeLabel}の締め切りが近づいています！
+  const urgency = daysLeft === 1 ? '明日が締め切り' : `あと${daysLeft}日`;
+  
+  const message = `🎩 あそボット より
 
-「${title}」
-あと${daysLeft}日で締め切り
+⏰「${title}」の${typeLabel}、${urgency}でございます。
 
-▼ まだの方は回答を
+まだの方はお早めにご回答を。
+
+▼ 回答はこちら
 ${liffUrl}`;
 
   return sendGroupNotification({
@@ -163,12 +171,13 @@ ${liffUrl}`;
 
 // 日程確定通知
 export async function notifyDateConfirmed(groupId: string, wishId: string, title: string, dateStr: string) {
-  const message = `🎉 日程が決定しました！
+  const message = `🎩 あそボット より
 
-「${title}」
-📅 ${dateStr}
+📅「${title}」の日程が決まりました。
 
-楽しみにしてね！`;
+${dateStr}
+
+皆様のご参加、お待ちしております。`;
 
   return sendGroupNotification({
     groupId,
@@ -178,16 +187,113 @@ export async function notifyDateConfirmed(groupId: string, wishId: string, title
   });
 }
 
-// おすすめ提案通知
+// おすすめ提案通知（候補あり）
 export async function notifySuggestion(groupId: string, suggestions: { title: string; interestCount: number }[], liffUrl: string) {
   const list = suggestions.map(s => `・「${s.title}」${s.interestCount}人が興味あり`).join('\n');
-  const message = `🎯 そろそろ遊びませんか？
+  
+  // ランダムでパターン選択（4パターン）
+  const patterns = [
+    // パターン1: 王道
+    `🎩 あそボット より
 
-人気の行きたいリスト:
+皆様にご報告がございます。
+人気の行きたい場所をお届けいたします。
+
 ${list}
 
-▼ 日程調整を始める
-${liffUrl}`;
+ご興味ございましたら、日程調整を始めてみては。
+「いつか」を「この日」に変えるお手伝い、いたします。`,
+
+    // パターン2: 盛り上がり強調
+    `🎩 あそボット より
+
+おや、盛り上がっているようですね。
+
+${list}
+
+皆様の「行きたい」が集まっております。
+そろそろ日程を決めてみませんか？`,
+
+    // パターン3: 背中を押す
+    `🎩 あそボット より
+
+「行きたい」と思っている方、
+実はこんなにいらっしゃいます。
+
+${list}
+
+誰かが声をあげれば、予定は動き出すもの。
+幹事役、いかがでしょう？`,
+
+    // パターン4: 季節感
+    `🎩 あそボット より
+
+いい季節になってまいりました。
+お出かけの機運、高まっております。
+
+${list}
+
+カレンダーを眺める前に、
+まずは日程調整を始めてみませんか。`
+  ];
+
+  const message = patterns[Math.floor(Math.random() * patterns.length)];
+
+  return sendGroupNotification({
+    groupId,
+    type: 'suggestion',
+    message
+  });
+}
+
+// おすすめ提案通知（候補なし）
+export async function notifySuggestionEmpty(groupId: string, liffUrl: string) {
+  // ランダムでパターン選択（4パターン）
+  const patterns = [
+    // パターン1: 王道
+    `🎩 あそボット より
+
+皆様、いかがお過ごしでしょうか。
+
+本日のおすすめをお届けしようと思いましたが、
+まだ「行きたい場所」が集まっておりません。
+
+「いつか行きたいね」
+そう思っているうちに、時は過ぎてしまうもの。
+
+ぜひ皆様の「行きたい！」をお聞かせください。`,
+
+    // パターン2: ちょっと煽る
+    `🎩 あそボット より
+
+ご機嫌いかがでしょうか。
+
+おすすめをお届けしたかったのですが、
+「行きたい場所」がまだ空でございます。
+
+「そのうち行こう」が「結局行けなかった」に
+ならぬよう、思い立った時にぜひご提案を。`,
+
+    // パターン3: 季節感
+    `🎩 あそボット より
+
+季節は移ろい、人は忙しくなるもの。
+気づけば「また今度ね」が続いておりませんか？
+
+行きたい場所、会いたい人。
+まずは一つ、リストに追加してみませんか。`,
+
+    // パターン5: ちょっと寂しげ
+    `🎩 あそボット より
+
+おすすめをお届けしようと参りましたが、
+リストが静かでございます。
+
+わたくし、皆様のお役に立ちたいのです。
+「行きたい場所」をお聞かせいただけませんか。`
+  ];
+
+  const message = patterns[Math.floor(Math.random() * patterns.length)];
 
   return sendGroupNotification({
     groupId,
