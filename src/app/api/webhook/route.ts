@@ -508,6 +508,34 @@ async function handleMessage(event: WebhookEvent & { type: 'message' }) {
       }],
     });
   }
+
+  // 使い方コマンド
+  if (text === '使い方' || text === 'つかいかた' || text === 'help') {
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{
+        type: 'text',
+        text: `🎩 あそボットの使い方
+
+■ 基本の流れ
+1. 行きたい場所を追加
+2. みんなが「行きたい！」と反応
+3. 盛り上がったら日程調整
+4. 参加確認 → 決定！
+
+■ 管理画面の開き方
+・下部メニューの「管理画面」をタップ
+・グループで「メニュー」と送信
+
+■ できること
+・行きたい場所リストの管理
+・日程調整（◯△✕でかんたん投票）
+・参加確認とリマインド
+
+ご不明な点は asobott.official@gmail.com まで。`,
+      }],
+    });
+  }
 }
 
 // GET リクエスト対応（ヘルスチェック用）
