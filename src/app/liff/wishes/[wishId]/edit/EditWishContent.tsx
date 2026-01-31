@@ -153,8 +153,16 @@ export default function EditWishContent() {
                   type="date"
                   value={startDate}
                   onChange={(e) => {
-                    setStartDate(e.target.value);
-                    if (e.target.value > endDate) setEndDate(e.target.value);
+                    const newStartDate = e.target.value;
+                    setStartDate(newStartDate);
+                    // 終了日が開始日より前なら、終了日を開始日に合わせる
+                    if (newStartDate > endDate) {
+                      setEndDate(newStartDate);
+                    }
+                    // 同じ日で終了時間が開始時間より前なら、終了時間を開始時間に合わせる
+                    if (newStartDate === endDate && startTime > endTime) {
+                      setEndTime(startTime);
+                    }
                   }}
                   className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"
                 />
@@ -162,7 +170,14 @@ export default function EditWishContent() {
                   <input
                     type="time"
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    onChange={(e) => {
+                      const newStartTime = e.target.value;
+                      setStartTime(newStartTime);
+                      // 同じ日で終了時間が開始時間より前なら、終了時間を開始時間に合わせる
+                      if (startDate === endDate && newStartTime > endTime) {
+                        setEndTime(newStartTime);
+                      }
+                    }}
                     className="w-28 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"
                   />
                 )}
@@ -175,7 +190,14 @@ export default function EditWishContent() {
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e) => {
+                    const newEndDate = e.target.value;
+                    setEndDate(newEndDate);
+                    // 同じ日で終了時間が開始時間より前なら、終了時間を開始時間に合わせる
+                    if (startDate === newEndDate && endTime < startTime) {
+                      setEndTime(startTime);
+                    }
+                  }}
                   min={startDate}
                   className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"
                 />
@@ -184,6 +206,7 @@ export default function EditWishContent() {
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
+                    min={startDate === endDate ? startTime : undefined}
                     className="w-28 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"
                   />
                 )}
